@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "github.com/cppforlife/go-patch/patch"
+	. "github.com/stuart-pollock/go-patch/patch"
 )
 
 var _ = Describe("ArrayInsertion", func() {

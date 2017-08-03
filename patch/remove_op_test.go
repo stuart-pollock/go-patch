@@ -4,10 +4,44 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "github.com/cppforlife/go-patch/patch"
+	. "github.com/stuart-pollock/go-patch/patch"
 )
 
 var _ = Describe("RemoveOp.Apply", func() {
+	Describe("multiple remove", func() {
+		It("removes many items", func() {
+			res, err := RemoveOp{Path: MustNewPointerFromString("/instance_groups/*/vm_extensions?")}.Apply(map[interface{}]interface{}{
+				"instance_groups": []interface{}{
+					map[interface{}]interface{}{
+						"name":          "foo",
+						"vm_extensions": []interface{}{"ex1", "ex2"},
+					},
+					map[interface{}]interface{}{
+						"name": "bar",
+					},
+					map[interface{}]interface{}{
+						"name":          "baz",
+						"vm_extensions": []interface{}{"ex1", "ex2", "ex3"},
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).To(Equal(map[interface{}]interface{}{
+				"instance_groups": []interface{}{
+					map[interface{}]interface{}{
+						"name": "foo",
+					},
+					map[interface{}]interface{}{
+						"name": "bar",
+					},
+					map[interface{}]interface{}{
+						"name": "baz",
+					},
+				},
+			}))
+		})
+	})
+
 	It("returns an error if path is for the entire document", func() {
 		_, err := RemoveOp{Path: MustNewPointerFromString("")}.Apply("a")
 		Expect(err).To(HaveOccurred())

@@ -11,6 +11,8 @@ type IndexToken struct {
 	Modifiers []Modifier
 }
 
+type WildcardToken struct{}
+
 type AfterLastIndexToken struct{}
 
 type MatchingIndexToken struct {

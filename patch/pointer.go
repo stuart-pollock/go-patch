@@ -40,7 +40,6 @@ func NewPointerFromString(str string) (Pointer, error) {
 	tokenStrs = tokenStrs[1:]
 
 	optional := false
-
 	for i, tok := range tokenStrs {
 		isLast := i == len(tokenStrs)-1
 
@@ -73,6 +72,12 @@ func NewPointerFromString(str string) (Pointer, error) {
 				return Pointer{}, fmt.Errorf("Expected not to find any modifiers with after last index token")
 			}
 			tokens = append(tokens, AfterLastIndexToken{})
+			continue
+		}
+
+		// parse wildcard
+		if tok == "*" {
+			tokens = append(tokens, WildcardToken{})
 			continue
 		}
 
@@ -146,6 +151,9 @@ func (p Pointer) String() string {
 
 		case IndexToken:
 			strs = append(strs, fmt.Sprintf("%d%s", typedToken.Index, p.modifiersString(typedToken.Modifiers)))
+
+		case WildcardToken:
+			strs = append(strs, "*")
 
 		case AfterLastIndexToken:
 			strs = append(strs, "-")

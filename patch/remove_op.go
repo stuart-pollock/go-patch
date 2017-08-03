@@ -15,18 +15,32 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("Cannot remove entire document")
 	}
 
-	obj := doc
-	prevUpdate := func(newObj interface{}) { doc = newObj }
+	ctxStack := []*mutationCtx{&mutationCtx{
+		PrevUpdate: func(newObj interface{}) { doc = newObj },
+		I:          0,
+		Obj:        doc,
+	}}
+	for len(ctxStack) != 0 {
+		// Pop the next context off the stack
+		ctx := ctxStack[len(ctxStack)-1]
+		ctxStack = ctxStack[:len(ctxStack)-1]
 
-	for i, token := range tokens[1:] {
-		isLast := i == len(tokens)-2
-		currPath := NewPointer(tokens[:i+2])
+		// Terminate if done
+		if ctx.I+1 >= len(tokens) {
+			continue
+		}
+
+		token := tokens[ctx.I+1]
+		isLast := ctx.I == len(tokens)-2
+		currPath := NewPointer(tokens[:ctx.I+2])
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
+			idx := typedToken.Index
+
+			typedObj, ok := ctx.Obj.([]interface{})
 			if !ok {
-				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
+				return nil, NewOpArrayMismatchTypeErr(currPath, ctx.Obj)
 			}
 
 			idx, err := ArrayIndex{Index: typedToken.Index, Modifiers: typedToken.Modifiers, Array: typedObj, Path: currPath}.Concrete()
@@ -38,16 +52,19 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 				newAry := []interface{}{}
 				newAry = append(newAry, typedObj[:idx]...)
 				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				ctx.PrevUpdate(newAry)
 			} else {
-				obj = typedObj[idx]
-				prevUpdate = func(newObj interface{}) { typedObj[idx] = newObj }
+				ctxStack = append(ctxStack, &mutationCtx{
+					Obj:        typedObj[idx],
+					PrevUpdate: func(newObj interface{}) { typedObj[idx] = newObj },
+					I:          ctx.I + 1,
+				})
 			}
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := ctx.Obj.([]interface{})
 			if !ok {
-				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
+				return nil, NewOpArrayMismatchTypeErr(currPath, ctx.Obj)
 			}
 
 			var idxs []int
@@ -62,7 +79,7 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 			}
 
 			if typedToken.Optional && len(idxs) == 0 {
-				return doc, nil
+				continue // don't exit early
 			}
 
 			if len(idxs) != 1 {
@@ -78,24 +95,25 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 				newAry := []interface{}{}
 				newAry = append(newAry, typedObj[:idx]...)
 				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				ctx.PrevUpdate(newAry)
 			} else {
-				obj = typedObj[idx]
-				// no need to change prevUpdate since matching item can only be a map
+				ctxStack = append(ctxStack, &mutationCtx{
+					Obj:        typedObj[idx],
+					PrevUpdate: ctx.PrevUpdate, // no need to change prevUpdate since matching item can only be a map
+					I:          ctx.I + 1,
+				})
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
+			typedObj, ok := ctx.Obj.(map[interface{}]interface{})
 			if !ok {
-				return nil, NewOpMapMismatchTypeErr(currPath, obj)
+				return nil, NewOpMapMismatchTypeErr(currPath, ctx.Obj)
 			}
 
-			var found bool
-
-			obj, found = typedObj[typedToken.Key]
+			o, found := typedObj[typedToken.Key]
 			if !found {
 				if typedToken.Optional {
-					return doc, nil
+					continue // don't return yet, as it may be present down alternate paths
 				}
 
 				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, typedObj}
@@ -104,7 +122,29 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 			if isLast {
 				delete(typedObj, typedToken.Key)
 			} else {
-				prevUpdate = func(newObj interface{}) { typedObj[typedToken.Key] = newObj }
+				ctxStack = append(ctxStack, &mutationCtx{
+					Obj:        o,
+					PrevUpdate: func(newObj interface{}) { typedObj[typedToken.Key] = newObj },
+					I:          ctx.I + 1,
+				})
+			}
+
+		case WildcardToken:
+			if isLast {
+				return nil, fmt.Errorf("Wildcard must not be the last token")
+			}
+
+			typedObj, ok := ctx.Obj.([]interface{})
+			if !ok {
+				return nil, NewOpArrayMismatchTypeErr(currPath, ctx.Obj)
+			}
+
+			for idx, o := range typedObj {
+				ctxStack = append(ctxStack, &mutationCtx{
+					PrevUpdate: func(newObj interface{}) { typedObj[idx] = newObj },
+					I:          ctx.I + 1,
+					Obj:        o,
+				})
 			}
 
 		default:

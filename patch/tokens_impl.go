@@ -5,12 +5,14 @@ var _ Token = IndexToken{}
 var _ Token = AfterLastIndexToken{}
 var _ Token = MatchingIndexToken{}
 var _ Token = KeyToken{}
+var _ Token = WildcardToken{}
 
 func (RootToken) _token()           {}
 func (IndexToken) _token()          {}
 func (AfterLastIndexToken) _token() {}
 func (MatchingIndexToken) _token()  {}
 func (KeyToken) _token()            {}
+func (WildcardToken) _token()       {}
 
 var _ Modifier = PrevModifier{}
 var _ Modifier = NextModifier{}
