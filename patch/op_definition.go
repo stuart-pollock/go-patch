@@ -9,6 +9,7 @@ import (
 // OpDefinition struct is useful for JSON and YAML unmarshaling
 type OpDefinition struct {
 	Type   string       `json:",omitempty" yaml:",omitempty"`
+	From   *string      `json:",omitempty" yaml:",omitempty"`
 	Path   *string      `json:",omitempty" yaml:",omitempty"`
 	Value  *interface{} `json:",omitempty" yaml:",omitempty"`
 	Absent *bool        `json:",omitempty" yaml:",omitempty"`
@@ -38,6 +39,12 @@ func NewOpsFromDefinitions(opDefs []OpDefinition) (Ops, error) {
 			op, err = p.newRemoveOp(opDef)
 			if err != nil {
 				return nil, fmt.Errorf("Remove operation [%d]: %s within\n%s", i, err, opFmt)
+			}
+
+		case "move":
+			op, err = p.newMoveOp(opDef)
+			if err != nil {
+				return nil, fmt.Errorf("Move operation [%d]: %s within\n%s", i, err, opFmt)
 			}
 
 		case "test":
@@ -92,6 +99,36 @@ func (parser) newRemoveOp(opDef OpDefinition) (RemoveOp, error) {
 	}
 
 	return RemoveOp{Path: ptr}, nil
+}
+
+func (parser) newMoveOp(opDef OpDefinition) (MoveOp, error) {
+	if opDef.Path == nil {
+		return MoveOp{}, fmt.Errorf("Missing path")
+	}
+
+	if opDef.From == nil {
+		return MoveOp{}, fmt.Errorf("Missing from path")
+	}
+
+	if opDef.From == opDef.Path {
+		return MoveOp{}, fmt.Errorf("From and path cannot be the same value")
+	}
+
+	if opDef.Value != nil {
+		return MoveOp{}, fmt.Errorf("Cannot specify value")
+	}
+
+	fromPtr, err := NewPointerFromString(*opDef.From)
+	if err != nil {
+		return MoveOp{}, fmt.Errorf("Invalid from path: %s", err)
+	}
+
+	pathPtr, err := NewPointerFromString(*opDef.Path)
+	if err != nil {
+		return MoveOp{}, fmt.Errorf("Invalid path: %s", err)
+	}
+
+	return MoveOp{From: fromPtr, Path: pathPtr}, nil
 }
 
 func (parser) newTestOp(opDef OpDefinition) (TestOp, error) {
